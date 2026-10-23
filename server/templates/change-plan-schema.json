@@ -1,0 +1,164 @@
+{
+  "version": 1,
+  "templateFile": "change-plan-template.docx",
+  "changeMethodOptions": [
+    "自动化部署",
+    "手工部署",
+    "自动化+手工部署"
+  ],
+  "headerFields": [
+    {
+      "key": "requirementText",
+      "label": "变更需求",
+      "type": "lines"
+    },
+    {
+      "key": "changeSystem",
+      "label": "变更系统",
+      "type": "readonly"
+    },
+    {
+      "key": "expectedChangeDate",
+      "label": "期望变更日期",
+      "type": "date"
+    },
+    {
+      "key": "changeMethod",
+      "label": "变更方式",
+      "type": "select"
+    }
+  ],
+  "serverTable": {
+    "key": "serverRows",
+    "columns": [
+      {
+        "key": "assetName",
+        "label": "资产名称"
+      },
+      {
+        "key": "ip",
+        "label": "IP 地址"
+      },
+      {
+        "key": "username",
+        "label": "用户名"
+      },
+      {
+        "key": "assetType",
+        "label": "资产类型"
+      }
+    ],
+    "sampleRows": [
+      {
+        "assetName": "代销系统应用服务器",
+        "ip": "*.*.1.27/28/29、*.*.1.125/127/128",
+        "username": "ifm30/cdadmin",
+        "assetType": "应用服务器"
+      },
+      {
+        "assetName": "代销系统前置机",
+        "ip": "*.*.200.12",
+        "username": "admin",
+        "assetType": "前置机"
+      },
+      {
+        "assetName": "代销系统数据库",
+        "ip": "*.*.88.14",
+        "username": "hsfss30",
+        "assetType": "数据库"
+      }
+    ]
+  },
+  "multiSelects": [
+    {
+      "key": "dbChanges",
+      "suffixKey": "dbChangesSuffix",
+      "label": "数据库变更",
+      "heading": "（一）数据库变更",
+      "placeholder": "XQ-2026-0726、对方的"
+    },
+    {
+      "key": "autoDeployChanges",
+      "suffixKey": "autoDeployChangesSuffix",
+      "label": "自动化部署",
+      "heading": "（二）自动化部署",
+      "placeholder": "XQ-2026-0726、对方的点"
+    },
+    {
+      "key": "configFileChanges",
+      "suffixKey": "configFileChangesSuffix",
+      "label": "修改配置文件",
+      "heading": "（三）修改配置文件",
+      "placeholder": "XQ-2026-0726、对方的点"
+    }
+  ],
+  "manualFields": [
+    {
+      "key": "packageFile",
+      "label": "变更包",
+      "section": "变更文件清单",
+      "kind": "input",
+      "placeholder": "jjxtyyyymmdd.zip"
+    },
+    {
+      "key": "packageNote",
+      "label": "说明",
+      "section": "变更文件清单",
+      "kind": "textarea",
+      "placeholder": "包含应用上线包及 SQL 脚本，SQL 脚本位于包内 SQL 目录。"
+    },
+    {
+      "key": "dbStep1",
+      "label": "数据库变更步骤",
+      "section": "数据库变更",
+      "kind": "textarea",
+      "placeholder": "1. 使用 hsfss30（query 备份使用）用户登录数据库服务器 *.*.88.14。\n2. 进入本地变更包的 SQL 目录，按顺序执行所有 .sql 文件：\n（1）*ddl.sql（如有）。\n（2）*dml.sql。\n3. 执行完成后确认脚本无报错，并记录执行结果。"
+    },
+    {
+      "key": "configStep1",
+      "label": "配置文件修改步骤",
+      "section": "修改配置文件",
+      "kind": "textarea",
+      "placeholder": "1. 参照附件《代销管理系统手动变更方案（20261015）》修改相关配置文件。\n2. 修改前备份原配置文件，修改后核对配置项与附件要求一致。"
+    },
+    {
+      "key": "manualStep1",
+      "label": "手工变更步骤",
+      "section": "手工变更",
+      "kind": "textarea",
+      "placeholder": "（1）解压 jjxtyyyymmdd.zip。\n（2）使用 ifm30 用户通过 SSH 登录应用服务器 *.*.1.27/28/29、*.*.1.125/127/128。\n（3）执行 cd /home/ifm30/。\n（4）将上线包 app 目录上传至 /home/ifm30。\n（5）涉及服务：ifmmanage、ifmonline、ifmcounter、bankchannel、hostchannel。"
+    },
+    {
+      "key": "appRollbackIntro",
+      "label": "应用回退内容",
+      "section": "应用回退",
+      "kind": "textarea",
+      "placeholder": "回退前先停止相关应用服务，再按以下步骤操作：\n1. cd /file/ifm30/backup/zdhyw/yyyymmdd。\n2. mv app-yyyymmdd.tar.gz /home/ifm30。\n3. cd ~。\n4. mv app app-yyyymmdd。\n5. tar -zxvf app-yyyymmdd.tar.gz。\n6. 回退完成后，按应用服务启动顺序重新启动各服务。"
+    },
+    {
+      "key": "dbRollback",
+      "label": "数据库回退",
+      "section": "数据库回退",
+      "kind": "textarea",
+      "placeholder": "执行回退脚本 回退.sql（如有）。回退前应确认数据库备份可用，并记录回退结果。"
+    }
+  ],
+  "verificationField": {
+    "key": "verificationPlan",
+    "label": "变更验证方案",
+    "section": "变更验证方案",
+    "kind": "textarea",
+    "placeholder": "取自变更申请表的变更验证方案"
+  },
+  "fixedSections": [
+    {
+      "title": "六、变更注意事项",
+      "lines": [
+        "1. 变更前确认变更包完整、数据库已备份、相关服务器可正常登录。",
+        "2. 严格按变更手册中的顺序执行；自动化部署失败时再执行手工变更。",
+        "3. 回退前先停止相关服务，回退完成后按启动顺序重新启动并验证。",
+        "4. 变更和回退过程应做好操作记录，异常情况及时上报。"
+      ]
+    }
+  ]
+}

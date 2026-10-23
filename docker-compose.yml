@@ -1,0 +1,24 @@
+services:
+  finance-change-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_BUILD_IMAGE: ${NODE_BUILD_IMAGE:-node:20-bookworm}
+        NODE_RUNTIME_IMAGE: ${NODE_RUNTIME_IMAGE:-node:20-bookworm-slim}
+    image: finance-change-app:latest
+    container_name: finance-change-app
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      PORT: "3000"
+      TZ: Asia/Shanghai
+      APP_TIMEZONE: Asia/Shanghai
+      DATA_DIR: /app/data
+    volumes:
+      - finance-change-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  finance-change-data:
+    name: finance-change-data

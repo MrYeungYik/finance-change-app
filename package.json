@@ -1,0 +1,27 @@
+{
+  "name": "finance-change-application",
+  "version": "1.0.0",
+  "private": true,
+  "description": "财务管理系统变更申请表 - 本地填写、Word 导出与留痕系统",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev:server": "node --watch server/index.js",
+    "dev:client": "npm --prefix client run dev",
+    "build": "npm --prefix client run build",
+    "setup": "npm install && npm --prefix client install",
+    "docker:up": "docker compose up --build -d",
+    "docker:down": "docker compose down"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "dependencies": {
+    "csv-parse": "^7.0.3",
+    "docxtemplater": "^3.71.1",
+    "express": "^4.22.3",
+    "multer": "^2.4.0",
+    "pizzip": "^3.3.0",
+    "sqlite3": "^5.1.7"
+  }
+}
