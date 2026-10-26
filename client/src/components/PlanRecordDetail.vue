@@ -17,38 +17,24 @@ const requirementLines = computed(() =>
 const serverRows = computed(() =>
   Array.isArray(form.value.serverRows) ? form.value.serverRows : [],
 );
+const stepRows = computed(() => form.value.stepRows || {});
 
 const stepSections = [
-  {
-    key: 'db',
-    title: '数据库变更',
-    changes: 'dbChanges',
-    fields: [['dbStep1', '数据库变更步骤']],
-  },
-  {
-    key: 'auto',
-    title: '自动化部署',
-    changes: 'autoDeployChanges',
-    fields: [],
-  },
-  {
-    key: 'config',
-    title: '修改配置文件',
-    changes: 'configFileChanges',
-    fields: [['configStep1', '配置文件修改步骤']],
-  },
-  {
-    key: 'manual',
-    title: '手工变更',
-    changes: null,
-    fields: [['manualStep1', '手工变更步骤']],
-  },
+  { title: '数据库变更', changes: 'dbChanges', stepKey: 'dbSteps' },
+  { title: '自动化部署', changes: 'autoDeployChanges', stepKey: null },
+  { title: '修改配置文件', changes: 'configFileChanges', stepKey: 'configSteps' },
+  { title: '手工变更', changes: null, stepKey: 'manualSteps' },
 ];
 
-const rollbackFields = [
-  ['appRollbackIntro', '应用回退内容'],
-  ['dbRollback', '数据库回退'],
+const rollbackSections = [
+  { title: '（一）应用回退', stepKey: 'appRollbackSteps' },
+  { title: '（二）数据库回退', stepKey: 'dbRollbackSteps' },
 ];
+
+function rowIps(row) {
+  if (Array.isArray(row.ips)) return row.ips.join('、');
+  return row.ip || '';
+}
 </script>
 
 <template>
@@ -112,7 +98,7 @@ const rollbackFields = [
         </div>
         <div v-for="(row, index) in serverRows" :key="index" class="plan-server-row">
           <span>{{ row.assetName }}</span>
-          <span>{{ row.ip }}</span>
+          <span>{{ rowIps(row) }}</span>
           <span>{{ row.username }}</span>
           <span>{{ row.assetType }}</span>
         </div>
@@ -122,7 +108,7 @@ const rollbackFields = [
 
     <section class="detail-section">
       <h4 class="detail-section-title">变更操作步骤</h4>
-      <div v-for="section in stepSections" :key="section.key" class="plan-step-block">
+      <div v-for="section in stepSections" :key="section.title" class="plan-step-block">
         <h5>{{ section.title }}</h5>
         <div v-if="section.changes" class="plan-tag-list">
           <el-tag
@@ -135,23 +121,24 @@ const rollbackFields = [
           </el-tag>
           <span v-if="!(form[section.changes] || []).length" class="plan-muted">未选择变更需求</span>
         </div>
-        <dl v-if="section.fields.length" class="detail-grid">
-          <div v-for="[key, label] in section.fields" :key="key" class="detail-field full">
-            <dt>{{ label }}</dt>
-            <dd class="plan-manual-text">{{ manual[key] || '—' }}</dd>
-          </div>
-        </dl>
+        <template v-if="section.stepKey">
+          <ol v-if="(stepRows[section.stepKey] || []).length" class="plan-step-list">
+            <li v-for="(step, index) in stepRows[section.stepKey]" :key="index">{{ step }}</li>
+          </ol>
+          <p v-else class="detail-empty">尚未填写步骤</p>
+        </template>
       </div>
     </section>
 
     <section class="detail-section">
       <h4 class="detail-section-title">变更回退方案</h4>
-      <dl class="detail-grid">
-        <div v-for="[key, label] in rollbackFields" :key="key" class="detail-field full">
-          <dt>{{ label }}</dt>
-          <dd class="plan-manual-text">{{ manual[key] || '—' }}</dd>
-        </div>
-      </dl>
+      <div v-for="section in rollbackSections" :key="section.title" class="plan-step-block">
+        <h5>{{ section.title }}</h5>
+        <ol v-if="(stepRows[section.stepKey] || []).length" class="plan-step-list">
+          <li v-for="(step, index) in stepRows[section.stepKey]" :key="index">{{ step }}</li>
+        </ol>
+        <p v-else class="detail-empty">尚未填写步骤</p>
+      </div>
     </section>
 
     <section class="detail-section">
@@ -170,6 +157,21 @@ const rollbackFields = [
 
 .plan-manual-text {
   white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.plan-step-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 22px;
+  color: var(--ink-700);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.plan-step-list li {
+  padding-left: 2px;
   word-break: break-word;
 }
 

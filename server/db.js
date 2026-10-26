@@ -128,6 +128,34 @@ async function initDb() {
     )
   `);
 
+  // 变更方案服务器表的下拉数据：资产名称/资产类型按变更系统维护，IP 按资产名称维护。
+  await run(`
+    CREATE TABLE IF NOT EXISTS plan_asset_options (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      system_name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      value TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(system_name, kind, value)
+    )
+  `);
+  await run(
+    'CREATE INDEX IF NOT EXISTS idx_plan_asset_options ON plan_asset_options(system_name, kind)',
+  );
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS plan_ip_options (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      asset_name TEXT NOT NULL,
+      value TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(asset_name, value)
+    )
+  `);
+  await run(
+    'CREATE INDEX IF NOT EXISTS idx_plan_ip_options ON plan_ip_options(asset_name)',
+  );
+
   await run(`
     CREATE TABLE IF NOT EXISTS app_meta (
       key TEXT PRIMARY KEY,
@@ -200,6 +228,46 @@ async function importOptionValues(group, values) {
   }
 
   return { added, skipped: uniqueValues.length - added, total: uniqueValues.length };
+}
+
+async function listPlanOptions() {
+  const assets = await all(`
+    SELECT id, system_name AS systemName, kind, value
+    FROM plan_asset_options
+    ORDER BY system_name, kind, id ASC
+  `);
+  const ips = await all(`
+    SELECT id, asset_name AS assetName, value
+    FROM plan_ip_options
+    ORDER BY asset_name, id ASC
+  `);
+  return { assets, ips };
+}
+
+async function addPlanAssetOption(option) {
+  const result = await run(
+    `INSERT INTO plan_asset_options (system_name, kind, value, created_at)
+     VALUES (?, ?, ?, ?)`,
+    [option.systemName, option.kind, option.value, new Date().toISOString()],
+  );
+  return { id: result.lastID, ...option };
+}
+
+async function deletePlanAssetOption(id) {
+  return run('DELETE FROM plan_asset_options WHERE id = ?', [id]);
+}
+
+async function addPlanIpOption(option) {
+  const result = await run(
+    `INSERT INTO plan_ip_options (asset_name, value, created_at)
+     VALUES (?, ?, ?)`,
+    [option.assetName, option.value, new Date().toISOString()],
+  );
+  return { id: result.lastID, ...option };
+}
+
+async function deletePlanIpOption(id) {
+  return run('DELETE FROM plan_ip_options WHERE id = ?', [id]);
 }
 
 async function createExportRecord(record) {
@@ -391,6 +459,11 @@ module.exports = {
   addOption,
   deleteOption,
   importOptionValues,
+  listPlanOptions,
+  addPlanAssetOption,
+  deletePlanAssetOption,
+  addPlanIpOption,
+  deletePlanIpOption,
   createExportRecord,
   listExportRecords,
   getExportRecord,

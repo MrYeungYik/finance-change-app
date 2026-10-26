@@ -14,6 +14,7 @@ import {
 } from '@element-plus/icons-vue';
 import PageHero from '../components/PageHero.vue';
 import FieldLabel from '../components/FieldLabel.vue';
+import StepTable from '../components/StepTable.vue';
 import { api, downloadBlob, filenameFromDisposition, getErrorMessage } from '../api';
 import { dateToDot, formatDateTime, padNumber } from '../utils/format';
 
@@ -25,6 +26,7 @@ const loadError = ref('');
 const exporting = ref(false);
 const schema = ref(null);
 const changeMethodOptions = ref([]);
+const planOptions = ref({ assets: [], ips: [] });
 const templates = ref([]);
 const templateDialogVisible = ref(false);
 const applyingTemplateId = ref(null);
@@ -35,13 +37,30 @@ const lastExport = ref(null);
 let rowKeySeed = 0;
 
 function makeServerRow(source = {}) {
+  let ips = [];
+  if (Array.isArray(source.ips)) {
+    ips = source.ips.filter((value) => typeof value === 'string');
+  } else if (typeof source.ip === 'string') {
+    ips = source.ip.split(/[、,，;；\n]/).map((value) => value.trim());
+  }
   return {
     _key: ++rowKeySeed,
     assetName: source.assetName || '',
-    ip: source.ip || '',
+    ips: [...new Set(ips.filter(Boolean))],
     username: source.username || '',
     assetType: source.assetType || '',
   };
+}
+
+function emptyStepRows(source = {}) {
+  const rows = {};
+  for (const table of schema.value?.stepTables || []) {
+    const values = Array.isArray(source[table.key])
+      ? source[table.key].filter((value) => typeof value === 'string')
+      : [];
+    rows[table.key] = values.length ? [...values] : [''];
+  }
+  return rows;
 }
 
 function emptyManual() {
@@ -59,6 +78,7 @@ const form = reactive({
   changeMethod: '',
   verificationPlan: '',
   manual: {},
+  stepRows: {},
   serverRows: [],
   dbChanges: [],
   autoDeployChanges: [],
@@ -80,8 +100,60 @@ const requirementOptions = computed(() => {
     });
 });
 
+function uniqueAssetValues(kind) {
+  const values = planOptions.value.assets
+    .filter((option) => option.systemName === form.changeSystem && option.kind === kind)
+    .map((option) => option.value);
+  return [...new Set(values)];
+}
+
+const assetNameOptions = computed(() => uniqueAssetValues('assetName'));
+const assetTypeOptions = computed(() => uniqueAssetValues('assetType'));
+
+function ipOptionsFor(assetName) {
+  if (!assetName) return [];
+  const values = planOptions.value.ips
+    .filter((option) => option.assetName === assetName)
+    .map((option) => option.value);
+  return [...new Set(values)];
+}
+
+/** 历史记录中的旧值可能已不在维护列表中，仍作为可选项展示，避免重新编辑时丢失。 */
+function withCurrentOption(options, current) {
+  const value = String(current || '').trim();
+  if (!value || options.includes(value)) return options;
+  return [value, ...options];
+}
+
+function ipOptionsForRow(row) {
+  return [...new Set([...ipOptionsFor(row.assetName), ...(row.ips || [])])];
+}
+
+function handleAssetNameChange(row) {
+  const allowed = new Set(ipOptionsFor(row.assetName));
+  row.ips = row.ips.filter((ip) => allowed.has(ip));
+  formRef.value?.clearValidate('serverRows');
+}
+
 function fieldsFor(section) {
   return (schema.value?.manualFields || []).filter((field) => field.section === section);
+}
+
+function stepFor(section) {
+  return (schema.value?.stepTables || []).find((table) => table.section === section);
+}
+
+function stepRules(table) {
+  return [{
+    validator: (rule, value, callback) => {
+      if (Array.isArray(value) && value.some((text) => String(text || '').trim())) {
+        callback();
+        return;
+      }
+      callback(new Error(`请至少填写一条${table.label}`));
+    },
+    trigger: 'change',
+  }];
 }
 
 function manualRules(field) {
@@ -95,7 +167,12 @@ function serverPlaceholder(index, key) {
 }
 
 function rowFilledCount(row) {
-  return ['assetName', 'ip', 'username', 'assetType'].filter((key) => String(row[key] || '').trim()).length;
+  return [
+    String(row.assetName || '').trim(),
+    Array.isArray(row.ips) && row.ips.length ? 'ip' : '',
+    String(row.username || '').trim(),
+    String(row.assetType || '').trim(),
+  ].filter(Boolean).length;
 }
 
 function validateServerRows(rule, value, callback) {
@@ -108,7 +185,7 @@ function validateServerRows(rule, value, callback) {
     return filled > 0 && filled < 4;
   });
   if (incomplete >= 0) {
-    callback(new Error(`第 ${incomplete + 1} 行需完整填写资产名称、IP 地址、用户名、资产类型`));
+    callback(new Error(`第 ${incomplete + 1} 行需完整填写资产名称、IP 地址（至少一个）、用户名、资产类型`));
     return;
   }
   if (!value.some((row) => rowFilledCount(row) === 4)) {
@@ -150,6 +227,8 @@ function fillFromPlanData(data = {}, record = {}) {
     form.manual[field.key] = value;
   }
 
+  form.stepRows = emptyStepRows(data.stepRows || {});
+
   const rows = Array.isArray(data.serverRows) ? data.serverRows.map(makeServerRow) : [];
   form.serverRows = rows.length ? rows : [makeServerRow()];
 
@@ -172,6 +251,7 @@ function fillFromSession(context = {}) {
   form.changeMethod = '自动化+手工部署';
   form.verificationPlan = context.verificationPlan || '';
   form.manual = emptyManual();
+  form.stepRows = emptyStepRows();
   form.serverRows = [makeServerRow(), makeServerRow(), makeServerRow()];
   form.dbChanges = [];
   form.autoDeployChanges = [];
@@ -192,6 +272,7 @@ async function loadInitialData() {
     const initResponse = await api.get('/plans/init');
     schema.value = initResponse.data.schema;
     changeMethodOptions.value = initResponse.data.changeMethodOptions || [];
+    planOptions.value = initResponse.data.planOptions || { assets: [], ips: [] };
     templates.value = initResponse.data.templates || [];
 
     if (Number.isInteger(recordId) && recordId > 0) {
@@ -239,6 +320,7 @@ async function applyTemplate(template) {
         form.manual[field.key] = planData.manual[field.key] || '';
       }
     }
+    form.stepRows = emptyStepRows(planData.stepRows || {});
     if (Array.isArray(planData.serverRows) && planData.serverRows.length) {
       form.serverRows = planData.serverRows.map(makeServerRow);
     }
@@ -295,7 +377,18 @@ function handleExport() {
         changeMethod: form.changeMethod,
         verificationPlan: form.verificationPlan,
         manual: { ...form.manual },
-        serverRows: form.serverRows.map(({ _key, ...row }) => row),
+        stepRows: Object.fromEntries(
+          (schema.value?.stepTables || []).map((table) => [
+            table.key,
+            (form.stepRows[table.key] || [])
+              .map((text) => String(text || '').trim())
+              .filter(Boolean),
+          ]),
+        ),
+        serverRows: form.serverRows.map(({ _key, ...row }) => ({
+          ...row,
+          ips: [...row.ips],
+        })),
         dbChanges: form.dbChanges,
         autoDeployChanges: form.autoDeployChanges,
         configFileChanges: form.configFileChanges,
@@ -539,7 +632,10 @@ onMounted(loadInitialData);
             <span class="section-index">03</span>
             <div class="section-heading">
               <h2>变更操作服务器和用户</h2>
-              <p>逐条填写涉及变更的服务器；支持增加和删除行。</p>
+              <p>
+                资产名称与资产类型按当前变更系统联动，IP 地址按行内资产名称联动；
+                <router-link :to="{ name: 'asset-options' }">前往资产选项维护</router-link>
+              </p>
             </div>
             <div class="section-head-actions">
               <el-button type="primary" plain size="small" @click="addServerRow">
@@ -554,10 +650,10 @@ onMounted(loadInitialData);
                 <div class="items-table server-table">
                   <div class="items-head">
                     <span>编号</span>
-                    <span><i class="field-marker manual"></i>资产名称</span>
-                    <span><i class="field-marker manual"></i>IP 地址</span>
+                    <span><i class="field-marker select"></i>资产名称</span>
+                    <span><i class="field-marker select"></i>IP 地址</span>
                     <span><i class="field-marker manual"></i>用户名</span>
-                    <span><i class="field-marker manual"></i>资产类型</span>
+                    <span><i class="field-marker select"></i>资产类型</span>
                     <span>操作</span>
                   </div>
                   <div v-if="!form.serverRows.length" class="items-empty">
@@ -565,26 +661,63 @@ onMounted(loadInitialData);
                   </div>
                   <div v-for="(row, index) in form.serverRows" :key="row._key" class="items-row">
                     <span class="item-seq">{{ padNumber(index + 1) }}</span>
-                    <el-input
+                    <el-select
                       v-model="row.assetName"
-                      :placeholder="serverPlaceholder(index, 'assetName')"
-                      maxlength="500"
-                    />
-                    <el-input
-                      v-model="row.ip"
-                      :placeholder="serverPlaceholder(index, 'ip')"
-                      maxlength="500"
-                    />
+                      filterable
+                      clearable
+                      :placeholder="assetNameOptions.length ? '选择资产名称' : '暂无资产名称，请先维护'"
+                      @change="handleAssetNameChange(row)"
+                    >
+                      <el-option
+                        v-for="option in withCurrentOption(assetNameOptions, row.assetName)"
+                        :key="option"
+                        :label="option"
+                        :value="option"
+                      />
+                    </el-select>
+                    <el-select
+                      v-model="row.ips"
+                      multiple
+                      filterable
+                      collapse-tags
+                      collapse-tags-tooltip
+                      :disabled="!row.assetName"
+                      :placeholder="
+                        row.assetName
+                          ? (ipOptionsForRow(row).length ? '选择 IP 地址' : '该资产暂无 IP 选项')
+                          : '请先选择资产名称'
+                      "
+                    >
+                      <el-option
+                        v-for="option in ipOptionsForRow(row)"
+                        :key="option"
+                        :label="option"
+                        :value="option"
+                      >
+                        <span class="select-check-option">
+                          <el-checkbox :model-value="row.ips.includes(option)" />
+                          <span class="select-check-label">{{ option }}</span>
+                        </span>
+                      </el-option>
+                    </el-select>
                     <el-input
                       v-model="row.username"
                       :placeholder="serverPlaceholder(index, 'username')"
                       maxlength="500"
                     />
-                    <el-input
+                    <el-select
                       v-model="row.assetType"
-                      :placeholder="serverPlaceholder(index, 'assetType')"
-                      maxlength="500"
-                    />
+                      filterable
+                      clearable
+                      :placeholder="assetTypeOptions.length ? '选择资产类型' : '暂无资产类型，请先维护'"
+                    >
+                      <el-option
+                        v-for="option in withCurrentOption(assetTypeOptions, row.assetType)"
+                        :key="option"
+                        :label="option"
+                        :value="option"
+                      />
+                    </el-select>
                     <el-button
                       class="item-delete"
                       text
@@ -636,19 +769,18 @@ onMounted(loadInitialData);
               </el-form-item>
 
               <el-form-item
-                v-for="field in fieldsFor('数据库变更')"
-                :key="field.key"
-                class="col-12"
-                :prop="`manual.${field.key}`"
-                :rules="manualRules(field)"
+                v-if="stepFor('数据库变更')"
+                class="col-12 plan-step-form-item"
+                :prop="'stepRows.' + stepFor('数据库变更').key"
+                :rules="stepRules(stepFor('数据库变更'))"
               >
-                <template #label><FieldLabel :text="field.label" type="manual" /></template>
-                <el-input
-                  v-model="form.manual[field.key]"
-                  type="textarea"
-                  :rows="2"
-                  :placeholder="field.placeholder"
-                  maxlength="5000"
+                <template #label>
+                  <FieldLabel :text="stepFor('数据库变更').label" type="manual" hint="逐行填写，序号自动生成" />
+                </template>
+                <StepTable
+                  v-model="form.stepRows[stepFor('数据库变更').key]"
+                  :placeholder="stepFor('数据库变更').placeholder"
+                  @change="formRef?.clearValidate('stepRows.' + stepFor('数据库变更').key)"
                 />
               </el-form-item>
             </div>
@@ -704,19 +836,18 @@ onMounted(loadInitialData);
               </el-form-item>
 
               <el-form-item
-                v-for="field in fieldsFor('修改配置文件')"
-                :key="field.key"
-                class="col-12"
-                :prop="`manual.${field.key}`"
-                :rules="manualRules(field)"
+                v-if="stepFor('修改配置文件')"
+                class="col-12 plan-step-form-item"
+                :prop="'stepRows.' + stepFor('修改配置文件').key"
+                :rules="stepRules(stepFor('修改配置文件'))"
               >
-                <template #label><FieldLabel :text="field.label" type="manual" /></template>
-                <el-input
-                  v-model="form.manual[field.key]"
-                  type="textarea"
-                  :rows="2"
-                  :placeholder="field.placeholder"
-                  maxlength="5000"
+                <template #label>
+                  <FieldLabel :text="stepFor('修改配置文件').label" type="manual" hint="逐行填写，序号自动生成" />
+                </template>
+                <StepTable
+                  v-model="form.stepRows[stepFor('修改配置文件').key]"
+                  :placeholder="stepFor('修改配置文件').placeholder"
+                  @change="formRef?.clearValidate('stepRows.' + stepFor('修改配置文件').key)"
                 />
               </el-form-item>
             </div>
@@ -724,19 +855,18 @@ onMounted(loadInitialData);
             <h3 class="plan-subhead">（四）手工变更</h3>
             <div class="form-grid">
               <el-form-item
-                v-for="field in fieldsFor('手工变更')"
-                :key="field.key"
-                class="col-12"
-                :prop="`manual.${field.key}`"
-                :rules="manualRules(field)"
+                v-if="stepFor('手工变更')"
+                class="col-12 plan-step-form-item"
+                :prop="'stepRows.' + stepFor('手工变更').key"
+                :rules="stepRules(stepFor('手工变更'))"
               >
-                <template #label><FieldLabel :text="field.label" type="manual" /></template>
-                <el-input
-                  v-model="form.manual[field.key]"
-                  type="textarea"
-                  :rows="2"
-                  :placeholder="field.placeholder"
-                  maxlength="5000"
+                <template #label>
+                  <FieldLabel :text="stepFor('手工变更').label" type="manual" hint="逐行填写，序号自动生成" />
+                </template>
+                <StepTable
+                  v-model="form.stepRows[stepFor('手工变更').key]"
+                  :placeholder="stepFor('手工变更').placeholder"
+                  @change="formRef?.clearValidate('stepRows.' + stepFor('手工变更').key)"
                 />
               </el-form-item>
             </div>
@@ -755,19 +885,18 @@ onMounted(loadInitialData);
             <h3 class="plan-subhead">（一）应用回退</h3>
             <div class="form-grid">
               <el-form-item
-                v-for="field in fieldsFor('应用回退')"
-                :key="field.key"
-                class="col-12"
-                :prop="`manual.${field.key}`"
-                :rules="manualRules(field)"
+                v-if="stepFor('应用回退')"
+                class="col-12 plan-step-form-item"
+                :prop="'stepRows.' + stepFor('应用回退').key"
+                :rules="stepRules(stepFor('应用回退'))"
               >
-                <template #label><FieldLabel :text="field.label" type="manual" /></template>
-                <el-input
-                  v-model="form.manual[field.key]"
-                  type="textarea"
-                  :rows="2"
-                  :placeholder="field.placeholder"
-                  maxlength="5000"
+                <template #label>
+                  <FieldLabel :text="stepFor('应用回退').label" type="manual" hint="逐行填写，序号自动生成" />
+                </template>
+                <StepTable
+                  v-model="form.stepRows[stepFor('应用回退').key]"
+                  :placeholder="stepFor('应用回退').placeholder"
+                  @change="formRef?.clearValidate('stepRows.' + stepFor('应用回退').key)"
                 />
               </el-form-item>
             </div>
@@ -775,19 +904,18 @@ onMounted(loadInitialData);
             <h3 class="plan-subhead">（二）数据库回退</h3>
             <div class="form-grid">
               <el-form-item
-                v-for="field in fieldsFor('数据库回退')"
-                :key="field.key"
-                class="col-12"
-                :prop="`manual.${field.key}`"
-                :rules="manualRules(field)"
+                v-if="stepFor('数据库回退')"
+                class="col-12 plan-step-form-item"
+                :prop="'stepRows.' + stepFor('数据库回退').key"
+                :rules="stepRules(stepFor('数据库回退'))"
               >
-                <template #label><FieldLabel :text="field.label" type="manual" /></template>
-                <el-input
-                  v-model="form.manual[field.key]"
-                  type="textarea"
-                  :rows="2"
-                  :placeholder="field.placeholder"
-                  maxlength="5000"
+                <template #label>
+                  <FieldLabel :text="stepFor('数据库回退').label" type="manual" hint="逐行填写，序号自动生成" />
+                </template>
+                <StepTable
+                  v-model="form.stepRows[stepFor('数据库回退').key]"
+                  :placeholder="stepFor('数据库回退').placeholder"
+                  @change="formRef?.clearValidate('stepRows.' + stepFor('数据库回退').key)"
                 />
               </el-form-item>
             </div>
@@ -963,24 +1091,47 @@ onMounted(loadInitialData);
 }
 
 .server-table {
-  min-width: 920px;
+  min-width: 1040px;
 }
 
 .server-table .items-head,
 .server-table .items-row {
-  grid-template-columns: 52px minmax(150px, 1.2fr) minmax(190px, 1.6fr) minmax(110px, 1fr) minmax(110px, 1fr) 44px;
+  grid-template-columns: 52px minmax(160px, 1.2fr) minmax(210px, 1.7fr) minmax(120px, 1fr) minmax(140px, 1fr) 44px;
 }
 
 .server-table .items-head span:last-child {
   justify-content: center;
 }
 
-.plan-server-form-item {
+.plan-server-form-item,
+.plan-step-form-item {
   margin-bottom: 0;
 }
 
-.plan-server-form-item :deep(.el-form-item__content) {
+.plan-server-form-item :deep(.el-form-item__content),
+.plan-step-form-item :deep(.el-form-item__content) {
   display: block;
+}
+
+.select-check-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.select-check-option :deep(.el-checkbox) {
+  height: auto;
+  margin-right: 0;
+  pointer-events: none;
+}
+
+.select-check-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .template-list {

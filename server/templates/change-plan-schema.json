@@ -33,19 +33,23 @@
     "columns": [
       {
         "key": "assetName",
-        "label": "资产名称"
+        "label": "资产名称",
+        "control": "select"
       },
       {
         "key": "ip",
-        "label": "IP 地址"
+        "label": "IP 地址",
+        "control": "multiSelect"
       },
       {
         "key": "username",
-        "label": "用户名"
+        "label": "用户名",
+        "control": "input"
       },
       {
         "key": "assetType",
-        "label": "资产类型"
+        "label": "资产类型",
+        "control": "select"
       }
     ],
     "sampleRows": [
@@ -106,41 +110,48 @@
       "section": "变更文件清单",
       "kind": "textarea",
       "placeholder": "包含应用上线包及 SQL 脚本，SQL 脚本位于包内 SQL 目录。"
-    },
+    }
+  ],
+  "stepTables": [
     {
-      "key": "dbStep1",
+      "key": "dbSteps",
+      "legacyKey": "dbStep1",
+      "templateTag": "dbStep1",
       "label": "数据库变更步骤",
       "section": "数据库变更",
-      "kind": "textarea",
-      "placeholder": "1. 使用 hsfss30（query 备份使用）用户登录数据库服务器 *.*.88.14。\n2. 进入本地变更包的 SQL 目录，按顺序执行所有 .sql 文件：\n（1）*ddl.sql（如有）。\n（2）*dml.sql。\n3. 执行完成后确认脚本无报错，并记录执行结果。"
+      "placeholder": "使用 hsfss30（query 备份使用）用户登录数据库服务器 10.0.0.14"
     },
     {
-      "key": "configStep1",
+      "key": "configSteps",
+      "legacyKey": "configStep1",
+      "templateTag": "configStep1",
       "label": "配置文件修改步骤",
       "section": "修改配置文件",
-      "kind": "textarea",
-      "placeholder": "1. 参照附件《代销管理系统手动变更方案（20261015）》修改相关配置文件。\n2. 修改前备份原配置文件，修改后核对配置项与附件要求一致。"
+      "placeholder": "参照附件修改相关配置文件"
     },
     {
-      "key": "manualStep1",
+      "key": "manualSteps",
+      "legacyKey": "manualStep1",
+      "templateTag": "manualStep1",
       "label": "手工变更步骤",
       "section": "手工变更",
-      "kind": "textarea",
-      "placeholder": "（1）解压 jjxtyyyymmdd.zip。\n（2）使用 ifm30 用户通过 SSH 登录应用服务器 *.*.1.27/28/29、*.*.1.125/127/128。\n（3）执行 cd /home/ifm30/。\n（4）将上线包 app 目录上传至 /home/ifm30。\n（5）涉及服务：ifmmanage、ifmonline、ifmcounter、bankchannel、hostchannel。"
+      "placeholder": "使用 ifm30 用户通过 SSH 登录应用服务器"
     },
     {
-      "key": "appRollbackIntro",
-      "label": "应用回退内容",
+      "key": "appRollbackSteps",
+      "legacyKey": "appRollbackIntro",
+      "templateTag": "appRollbackIntro",
+      "label": "应用回退步骤",
       "section": "应用回退",
-      "kind": "textarea",
-      "placeholder": "回退前先停止相关应用服务，再按以下步骤操作：\n1. cd /file/ifm30/backup/zdhyw/yyyymmdd。\n2. mv app-yyyymmdd.tar.gz /home/ifm30。\n3. cd ~。\n4. mv app app-yyyymmdd。\n5. tar -zxvf app-yyyymmdd.tar.gz。\n6. 回退完成后，按应用服务启动顺序重新启动各服务。"
+      "placeholder": "停止相关应用服务后按顺序执行"
     },
     {
-      "key": "dbRollback",
-      "label": "数据库回退",
+      "key": "dbRollbackSteps",
+      "legacyKey": "dbRollback",
+      "templateTag": "dbRollback",
+      "label": "数据库回退步骤",
       "section": "数据库回退",
-      "kind": "textarea",
-      "placeholder": "执行回退脚本 回退.sql（如有）。回退前应确认数据库备份可用，并记录回退结果。"
+      "placeholder": "执行回退脚本 回退.sql（如有）"
     }
   ],
   "verificationField": {

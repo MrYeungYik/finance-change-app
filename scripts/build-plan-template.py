@@ -92,6 +92,21 @@ SERVER_COLUMNS = [
     ("username", "用户名"),
     ("assetType", "资产类型"),
 ]
+COLUMN_CONTROLS = {
+    "assetName": "select",
+    "ip": "multiSelect",
+    "username": "input",
+    "assetType": "select",
+}
+# 步骤输入在页面中改为可增删行的表格；Word 模板仍使用每组第一个 tag。
+STEP_TABLE_DEFS = [
+    ("dbSteps", "dbStep1", "数据库变更步骤", "数据库变更"),
+    ("configSteps", "configStep1", "配置文件修改步骤", "修改配置文件"),
+    ("manualSteps", "manualStep1", "手工变更步骤", "手工变更"),
+    ("appRollbackSteps", "appRollbackIntro", "应用回退步骤", "应用回退"),
+    ("dbRollbackSteps", "dbRollback", "数据库回退步骤", "数据库回退"),
+]
+STEP_TABLE_KEYS = {legacy_key for _, legacy_key, _, _ in STEP_TABLE_DEFS}
 CHANGE_METHOD_OPTIONS = ["自动化部署", "手工部署", "自动化+手工部署"]
 
 
@@ -545,6 +560,26 @@ def main() -> None:
                     data = archive.read(info.filename)
                 target.writestr(info, data)
 
+    schema_manual_fields = [
+        field for field in manual_fields if field["key"] not in STEP_TABLE_KEYS
+    ]
+    field_by_key = {field["key"]: field for field in manual_fields}
+    step_tables = []
+    for key, legacy_key, label, section in STEP_TABLE_DEFS:
+        field = field_by_key[legacy_key]
+        first_line = next(
+            (line.strip() for line in field["placeholder"].splitlines() if line.strip()),
+            "",
+        )
+        step_tables.append({
+            "key": key,
+            "legacyKey": legacy_key,
+            "templateTag": legacy_key,
+            "label": label,
+            "section": section,
+            "placeholder": first_line,
+        })
+
     schema = {
         "version": 1,
         "templateFile": "change-plan-template.docx",
@@ -557,11 +592,15 @@ def main() -> None:
         ],
         "serverTable": {
             "key": "serverRows",
-            "columns": [{"key": key, "label": label} for key, label in SERVER_COLUMNS],
+            "columns": [
+                {"key": key, "label": label, "control": COLUMN_CONTROLS[key]}
+                for key, label in SERVER_COLUMNS
+            ],
             "sampleRows": sample_rows,
         },
         "multiSelects": multi_selects,
-        "manualFields": manual_fields,
+        "manualFields": schema_manual_fields,
+        "stepTables": step_tables,
         "verificationField": {
             "key": "verificationPlan",
             "label": "变更验证方案",
@@ -578,9 +617,9 @@ def main() -> None:
 
     print(f"模板已生成: {template_output}")
     print(f"字段 Schema 已生成: {schema_output}")
-    print(f"手工字段 {len(manual_fields)} 个；多选字段 {len(multi_selects)} 个；"
-          f"服务器示例行 {len(sample_rows)} 条")
-    for field in manual_fields:
+    print(f"手工字段 {len(schema_manual_fields)} 个；步骤表格 {len(step_tables)} 个；"
+          f"多选字段 {len(multi_selects)} 个；服务器示例行 {len(sample_rows)} 条")
+    for field in schema_manual_fields:
         print(f"  - {field['key']}: {field['placeholder'][:48]}")
 
 

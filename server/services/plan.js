@@ -7,9 +7,12 @@ const TEMPLATE_PATH = path.join(__dirname, '..', 'templates', 'change-plan-templ
 
 const CHANGE_METHOD_OPTIONS = ['自动化部署', '手工部署', '自动化+手工部署'];
 const MAX_SERVER_ROWS = 200;
+const MAX_STEP_ROWS = 200;
+const MAX_IPS_PER_ROW = 50;
 const MAX_REQUIREMENT_LENGTH = 10000;
 const MAX_TEXT_LENGTH = 5000;
 const MAX_SHORT_TEXT_LENGTH = 500;
+const MAX_IP_LENGTH = 200;
 const MAX_SYSTEM_LENGTH = 160;
 
 let cachedSchema = null;
@@ -67,6 +70,75 @@ function normalizeMultiSelect(value, label, requirementNames, errors) {
   return selected;
 }
 
+/** IP 地址在多选中以数组保存；兼容旧数据的字符串格式。 */
+function normalizeIps(source) {
+  let raw = [];
+  if (Array.isArray(source?.ips)) {
+    raw = source.ips;
+  } else if (typeof source?.ip === 'string') {
+    raw = source.ip.split(/[、,，;；\n]/);
+  }
+  const seen = new Set();
+  const ips = [];
+  for (const item of raw) {
+    if (typeof item !== 'string') continue;
+    const text = item.trim().slice(0, MAX_IP_LENGTH).trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    ips.push(text);
+  }
+  return ips;
+}
+
+function splitStepLines(text) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/** 旧数据中的步骤行可能自带“1.”“（1）”等序号，迁移时去掉，避免导出重复编号。 */
+function stripStepNumber(text) {
+  return String(text || '')
+    .replace(/^\s*(?:[（(]\s*\d+\s*[)）]|\d+\s*[.、．)）])\s*/, '')
+    .trim();
+}
+
+function normalizeStepRows(rawStepRows, legacyManual, errors) {
+  const schema = getPlanSchema();
+  const source = rawStepRows && typeof rawStepRows === 'object' ? rawStepRows : {};
+  const manual = legacyManual && typeof legacyManual === 'object' ? legacyManual : {};
+  const stepRows = {};
+
+  for (const table of schema.stepTables || []) {
+    let rows;
+    if (Array.isArray(source[table.key])) {
+      if (source[table.key].length > MAX_STEP_ROWS) {
+        errors.push(`${table.label}最多支持 ${MAX_STEP_ROWS} 行`);
+      }
+      rows = source[table.key]
+        .slice(0, MAX_STEP_ROWS)
+        .map((row) => {
+          const value = typeof row === 'string' ? row : row?.text;
+          return asText(value, MAX_TEXT_LENGTH);
+        })
+        .filter(Boolean);
+    } else {
+      // 兼容旧版本方案：手工步骤保存在 manual 的多行文本中。
+      rows = splitStepLines(manual[table.legacyKey])
+        .map(stripStepNumber)
+        .filter(Boolean);
+    }
+
+    if (!rows.length) {
+      errors.push(`请至少填写一条${table.label}`);
+    }
+    stepRows[table.key] = rows;
+  }
+
+  return stepRows;
+}
+
 function normalizeServerRows(rawRows, errors) {
   if (!Array.isArray(rawRows)) {
     errors.push('服务器信息格式不正确');
@@ -80,17 +152,24 @@ function normalizeServerRows(rawRows, errors) {
     const source = row && typeof row === 'object' ? row : {};
     const values = {
       assetName: asText(source.assetName, MAX_SHORT_TEXT_LENGTH),
-      ip: asText(source.ip, MAX_SHORT_TEXT_LENGTH),
       username: asText(source.username, MAX_SHORT_TEXT_LENGTH),
       assetType: asText(source.assetType, MAX_SHORT_TEXT_LENGTH),
     };
-    const filled = Object.values(values).filter(Boolean).length;
+    const ips = normalizeIps(source);
+    const filled = Boolean(values.assetName)
+      + Boolean(ips.length)
+      + Boolean(values.username)
+      + Boolean(values.assetType);
     if (!filled) return;
     if (filled < 4) {
-      errors.push(`服务器信息第 ${index + 1} 行需完整填写资产名称、IP 地址、用户名、资产类型`);
+      errors.push(`服务器信息第 ${index + 1} 行需完整填写资产名称、IP 地址（至少一个）、用户名、资产类型`);
       return;
     }
-    rows.push(values);
+    if (ips.length > MAX_IPS_PER_ROW) {
+      errors.push(`服务器信息第 ${index + 1} 行的 IP 地址不能超过 ${MAX_IPS_PER_ROW} 个`);
+      return;
+    }
+    rows.push({ ...values, ips });
   });
   if (!rows.length) {
     errors.push('请至少填写一条完整的服务器信息');
@@ -125,7 +204,7 @@ function validateAndNormalizePlan(raw) {
     errors.push('变更需求至少需要一条');
   }
 
-  const rawManual = source.manual && typeof source.manual === 'object' ? source.manual : {};
+  const rawManual = mergeLegacyManual(source.manual);
   const manual = {};
   for (const field of schema.manualFields) {
     const maxLength = field.kind === 'input' ? MAX_SHORT_TEXT_LENGTH : MAX_TEXT_LENGTH;
@@ -136,6 +215,7 @@ function validateAndNormalizePlan(raw) {
     manual[field.key] = value;
   }
 
+  const stepRows = normalizeStepRows(source.stepRows, rawManual, errors);
   const serverRows = normalizeServerRows(source.serverRows, errors);
 
   const dbChanges = normalizeMultiSelect(
@@ -155,6 +235,7 @@ function validateAndNormalizePlan(raw) {
     changeMethod,
     verificationPlan,
     manual,
+    stepRows,
     serverRows,
     dbChanges,
     autoDeployChanges,
@@ -179,9 +260,9 @@ const LEGACY_MANUAL_GROUPS = {
   ],
 };
 
-function normalizePlanData(planData) {
-  const data = JSON.parse(JSON.stringify(planData || {}));
-  const manual = data.manual && typeof data.manual === 'object' ? data.manual : {};
+/** 把旧版拆分的步骤字段合并回每组第一个字段。 */
+function mergeLegacyManual(rawManual) {
+  const manual = rawManual && typeof rawManual === 'object' ? { ...rawManual } : {};
   for (const [target, extraKeys] of Object.entries(LEGACY_MANUAL_GROUPS)) {
     const extras = extraKeys
       .map((key) => manual[key])
@@ -195,12 +276,54 @@ function normalizePlanData(planData) {
       delete manual[key];
     }
   }
+  return manual;
+}
+
+function normalizePlanData(planData) {
+  const data = JSON.parse(JSON.stringify(planData || {}));
+  const schema = getPlanSchema();
+  const manual = mergeLegacyManual(data.manual);
+
+  const rawStepRows = data.stepRows && typeof data.stepRows === 'object' ? data.stepRows : {};
+  const stepRows = {};
+  for (const table of schema.stepTables || []) {
+    const values = Array.isArray(rawStepRows[table.key]) ? rawStepRows[table.key] : [];
+    let rows = values
+      .map((value) => (typeof value === 'string' ? asText(value, MAX_TEXT_LENGTH) : ''))
+      .filter(Boolean);
+    // 旧版方案把步骤保存在 manual 的多行文本中，读取时迁移为表格行。
+    if (!rows.length && typeof manual[table.legacyKey] === 'string') {
+      rows = splitStepLines(manual[table.legacyKey])
+        .map(stripStepNumber)
+        .filter(Boolean);
+    }
+    stepRows[table.key] = rows;
+    delete manual[table.legacyKey];
+  }
+
+  if (Array.isArray(data.serverRows)) {
+    data.serverRows = data.serverRows.map((row) => {
+      const source = row && typeof row === 'object' ? row : {};
+      return {
+        assetName: typeof source.assetName === 'string' ? source.assetName : '',
+        ips: normalizeIps(source),
+        username: typeof source.username === 'string' ? source.username : '',
+        assetType: typeof source.assetType === 'string' ? source.assetType : '',
+      };
+    });
+  }
+
   data.manual = manual;
+  data.stepRows = stepRows;
   return data;
 }
 
 function buildPlanDocxContext(data) {
   const suffix = (items) => (items.length ? `（${items.join('、')}）` : '');
+  const stepText = (rows) => (Array.isArray(rows) ? rows : [])
+    .map((text, index) => `${index + 1}. ${text}`)
+    .join('\n');
+  const schema = getPlanSchema();
   const context = {
     requirementText: data.requirementText,
     changeSystem: data.changeSystem,
@@ -209,10 +332,17 @@ function buildPlanDocxContext(data) {
     dbChangesSuffix: suffix(data.dbChanges),
     autoDeployChangesSuffix: suffix(data.autoDeployChanges),
     configFileChangesSuffix: suffix(data.configFileChanges),
-    serverRows: data.serverRows,
+    serverRows: (data.serverRows || []).map((row) => ({
+      ...row,
+      ip: (row.ips || []).join('、'),
+    })),
   };
   for (const [key, value] of Object.entries(data.manual || {})) {
     context[key] = value;
+  }
+  for (const table of schema.stepTables || []) {
+    // Word 模板仍使用单个占位符，表格行以自动编号的段落输出。
+    context[table.templateTag] = stepText(data.stepRows?.[table.key]);
   }
   return context;
 }
@@ -238,6 +368,7 @@ function validatePlanTemplate() {
     '{assetType}',
   ];
   for (const field of schema.manualFields) required.push(`{${field.key}}`);
+  for (const table of schema.stepTables || []) required.push(`{${table.templateTag}}`);
   for (const field of schema.multiSelects) required.push(`{${field.key}Suffix}`);
 
   const missing = required.filter((tag) => !xml.includes(tag));

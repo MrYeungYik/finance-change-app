@@ -16,6 +16,7 @@ const {
   getPlanSession,
   prunePlanSessions,
   getExportRecord,
+  listPlanOptions,
 } = require('../db');
 const {
   CHANGE_METHOD_OPTIONS,
@@ -104,11 +105,15 @@ async function pruneSessions() {
 /** 获取方案表单初始化数据 */
 router.get('/init', async (req, res, next) => {
   try {
-    const templates = await listPlanTemplates();
+    const [templates, planOptions] = await Promise.all([
+      listPlanTemplates(),
+      listPlanOptions(),
+    ]);
     res.json({
       schema: getPlanSchema(),
       changeMethodOptions: CHANGE_METHOD_OPTIONS,
       templates,
+      planOptions,
     });
   } catch (error) {
     next(error);

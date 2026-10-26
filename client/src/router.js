@@ -4,6 +4,7 @@ import ChangePlanForm from './views/ChangePlanForm.vue';
 import ChangePlanRecords from './views/ChangePlanRecords.vue';
 import ExportRecords from './views/ExportRecords.vue';
 import OptionsManage from './views/OptionsManage.vue';
+import AssetOptions from './views/AssetOptions.vue';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -24,6 +25,12 @@ const router = createRouter({
       meta: { title: '变更方案记录' },
     },
     { path: '/options', name: 'options', component: OptionsManage, meta: { title: '下拉选项维护' } },
+    {
+      path: '/asset-options',
+      name: 'asset-options',
+      component: AssetOptions,
+      meta: { title: '资产选项维护' },
+    },
     { path: '/:pathMatch(.*)*', redirect: '/form' },
   ],
   scrollBehavior(to, from, savedPosition) {

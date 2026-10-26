@@ -5,6 +5,7 @@ const multer = require('multer');
 const { initDb, DATA_DIR } = require('./db');
 const formRouter = require('./routes/form');
 const optionsRouter = require('./routes/options');
+const planOptionsRouter = require('./routes/plan-options');
 const exportsRouter = require('./routes/exports');
 const plansRouter = require('./routes/plans');
 const { TIME_ZONE, todayISO } = require('./services/date');
@@ -34,6 +35,7 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/form', formRouter);
 app.use('/api/options', optionsRouter);
+app.use('/api/plan-options', planOptionsRouter);
 app.use('/api/exports', exportsRouter);
 app.use('/api/plans', plansRouter);
 

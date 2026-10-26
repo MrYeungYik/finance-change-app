@@ -15,6 +15,7 @@
           <router-link to="/records" class="nav-link">导出记录查询</router-link>
           <router-link to="/plans" class="nav-link">变更方案记录</router-link>
           <router-link to="/options" class="nav-link">下拉选项维护</router-link>
+          <router-link to="/asset-options" class="nav-link">资产选项维护</router-link>
         </nav>
 
         <div class="header-meta">

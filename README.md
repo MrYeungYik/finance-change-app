@@ -38,13 +38,15 @@
 
 - 在申请表页面点击「编辑变更方案」进入方案编辑页，变更需求、变更系统、期望变更日期自动取自申请表。
 - 按彩色 Word 模板生成方案：红色文字为手工填写项（仅作为输入提示），橙黄色文字为变更需求多选（导出时以顿号连接）。
-- 数据库变更、修改配置文件、手工变更、应用回退各只保留一个多行输入框；模板中其余步骤段落已合并删除。
+- 服务器表中，资产名称、资产类型为下拉单选，选项按当前变更系统联动；IP 地址为下拉复选，选项按行内选择的资产名称联动。选项在「资产选项维护」页面维护。
+- 数据库变更、修改配置文件、手工变更、应用回退、数据库回退的步骤统一为可增删行的表格，序号自动生成；导出 Word 时按「1. 步骤内容」自动编号。
 - 关联变更需求三个多选允许为空；为空时 Word 标题不输出空括号。
 - 变更验证方案自动取自变更申请表的“变更验证方案”内容。
-- 服务器表支持增加、删除行；红色手工字段必须填写后才能导出。
+- 服务器表支持增加、删除行；资产名称、IP、用户名、资产类型必须完整填写后才能导出。
 - 文件名为：`{变更系统}+{期望变更日期}+变更方案.docx`。
 - 方案记录页支持查看、下载、重新编辑和设为模板；重新编辑会生成新记录，旧记录保留。
-- 支持多套命名模板。新建方案时可选择模板，模板只回填手工项与服务器表，不覆盖自动字段和下拉选项。
+- 支持多套命名模板。新建方案时可选择模板，模板回填手工项、步骤表格与服务器表，不覆盖自动字段和下拉选项。
+- 旧版方案记录与模板在读取时会自动迁移：原多行步骤文本拆分为步骤行，原 IP 字符串拆分为 IP 数组。
 
 ### 下拉选项维护
 
@@ -54,6 +56,13 @@
   - 每行一个选项（可带 `value` 表头）；
   - 或使用 `group,value` 两列表格。
 - 重复选项自动跳过，导入后立即作用于申请表。
+
+### 资产选项维护
+
+- 资产名称、资产类型按**变更系统**维度维护：先选择变更系统，再维护该系统的资产名称与资产类型。
+- IP 地址按**资产名称**维度维护：选择资产名称后维护其 IP 列表。
+- 变更方案编辑页的服务器表按「变更系统 → 资产名称/资产类型」「资产名称 → IP 地址」联动展示。
+- 支持新增、删除；选项变更后立即作用于变更方案编辑页，已导出的历史记录不受影响。
 
 ## Docker 启动（推荐）
 
@@ -145,15 +154,15 @@ npm start
 finance-change-app/
 ├── client/                         # Vue 3 前端
 │   ├── src/
-│   │   ├── components/             # 页头、字段标签、●/○ 选择组、记录详情
-│   │   ├── views/                  # 申请表 / 导出记录 / 变更方案 / 方案记录 / 下拉选项
+│   │   ├── components/             # 页头、字段标签、●/○ 选择组、步骤表格、记录详情
+│   │   ├── views/                  # 申请表 / 导出记录 / 变更方案 / 方案记录 / 下拉选项 / 资产选项
 │   │   ├── api.js                  # Axios 与下载工具
 │   │   └── styles.css              # 全局视觉主题
 │   └── vite.config.js
 ├── server/
 │   ├── index.js                    # Express 入口、静态资源托管
 │   ├── db.js                       # SQLite 初始化、选项与留痕数据访问
-│   ├── routes/                     # form / options / exports / plans API
+│   ├── routes/                     # form / options / plan-options / exports / plans API
 │   ├── services/                   # 日期、校验、docx 渲染、方案模板
 │   └── templates/
 │       ├── change-application-template.docx
@@ -200,11 +209,16 @@ changeCategory,需求
 | POST | `/api/options` | 新增选项 `{ group, value }` |
 | DELETE | `/api/options/:id` | 删除选项 |
 | POST | `/api/options/import` | 上传 CSV，字段 `file`、`group` |
+| GET | `/api/plan-options` | 获取资产名称/资产类型/IP 选项 |
+| POST | `/api/plan-options/assets` | 新增资产选项 `{ systemName, kind, value }`，kind 为 `assetName`/`assetType` |
+| DELETE | `/api/plan-options/assets/:id` | 删除资产选项 |
+| POST | `/api/plan-options/ips` | 新增 IP 选项 `{ assetName, value }` |
+| DELETE | `/api/plan-options/ips/:id` | 删除 IP 选项 |
 | POST | `/api/exports` | 校验、生成 Word、保存留痕并返回文件 |
 | GET | `/api/exports` | 导出记录列表 |
 | GET | `/api/exports/:id` | 单条导出记录详情 |
 | GET | `/api/exports/:id/file` | 下载历史 Word 文件 |
-| GET | `/api/plans/init` | 方案字段 Schema、变更方式选项、模板列表 |
+| GET | `/api/plans/init` | 方案字段 Schema、变更方式选项、模板列表、资产/IP 选项 |
 | POST | `/api/plans/session` | 保存申请表带入的方案上下文 |
 | GET | `/api/plans/session/:id` | 读取方案上下文 |
 | POST | `/api/plans` | 校验、生成方案 Word、保存留痕并返回文件 |
