@@ -14,7 +14,9 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 # ---------- 前端构建 ----------
-FROM ${NODE_BUILD_IMAGE} AS client-build
+# 前端产物与 CPU 架构无关；固定在构建机架构上编译，避免 arm64 交叉构建时
+# esbuild 在 QEMU 模拟环境中崩溃。
+FROM --platform=$BUILDPLATFORM ${NODE_BUILD_IMAGE} AS client-build
 WORKDIR /app/client
 COPY client/package.json client/package-lock.json ./
 RUN npm ci
